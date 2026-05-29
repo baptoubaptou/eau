@@ -16,7 +16,12 @@ import os
 from datetime import date
 from dotenv import load_dotenv
 from egl_scraper import get_daily_consumption
-from ha_sender import send_to_ha, send_month_total_to_ha, import_statistics_to_ha
+from ha_sender import (
+    send_to_ha,
+    send_month_total_to_ha,
+    import_statistics_to_ha,
+    send_live_state,
+)
 
 load_dotenv("config.env")
 
@@ -74,7 +79,9 @@ def main():
         if args.import_stats:
             import_statistics_to_ha(ha_url, ha_token, statistic_id, data)
     else:
+        latest = sorted(data, key=lambda x: x["date"], reverse=True)[0]
         send_to_ha(ha_url, ha_token, sensor, data)
+        send_live_state(ha_url, ha_token, sensor, latest["volume_liters"])
         month_label = args.month or date.today().strftime("%Y-%m")
         month_data = data
         if not args.month:

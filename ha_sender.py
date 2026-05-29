@@ -159,6 +159,32 @@ def send_history_statistics(ha_url: str, token: str, consumption_data: list[dict
                       headers=headers, json=payload, timeout=5)
 
 
+def send_live_state(ha_url, token, sensor_name, latest_value):
+    """
+    Crée/met à jour un sensor avec une valeur courante.
+    Nécessaire pour que HA calcule les coûts dans le dashboard Énergie.
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "state": latest_value,
+        "attributes": {
+            "unit_of_measurement": "L",
+            "device_class": "water",
+            "state_class": "total_increasing",
+            "friendly_name": "Eau Grand Lyon - Journalier",
+        },
+    }
+    requests.post(
+        f"{ha_url}/api/states/{sensor_name}",
+        headers=headers,
+        json=payload,
+        timeout=10,
+    )
+
+
 def import_statistics_to_ha(
     ha_url: str,
     token: str,
