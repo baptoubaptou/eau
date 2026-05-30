@@ -32,6 +32,55 @@ cd eau
 python3 -m pip install -r requirements.txt
 ```
 
+## Mise en prod sur Raspberry Pi
+
+Le repo contient tout le necessaire pour un run quotidien robuste (retry + lock + logs + systemd timer).
+
+### 1) Setup machine
+
+```bash
+cd /home/pi/eau
+./scripts/setup_raspberry.sh
+```
+
+### 2) Configurer les secrets
+
+```bash
+cp -n config.env.example config.env
+nano config.env
+```
+
+### 3) Installer le service systemd
+
+```bash
+sudo cp deploy/systemd/eau-scraper.service /etc/systemd/system/
+sudo cp deploy/systemd/eau-scraper.timer /etc/systemd/system/
+```
+
+Verifie et adapte les chemins dans le service si besoin :
+
+- `User=pi`
+- `WorkingDirectory=/home/pi/eau`
+- `ExecStart=/home/pi/eau/scripts/run_eau.sh`
+
+### 4) Activer et lancer le timer
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now eau-scraper.timer
+sudo systemctl status eau-scraper.timer
+```
+
+### 5) Logs et debug
+
+```bash
+# logs app (retry details)
+tail -f /home/pi/eau/logs/eau.log
+
+# logs systemd
+journalctl -u eau-scraper.service -f
+```
+
 ## Configuration
 
 ```bash

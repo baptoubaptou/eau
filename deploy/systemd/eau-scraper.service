@@ -1,0 +1,28 @@
+[Unit]
+Description=Eau Grand Lyon scraper
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/eau
+ExecStart=/home/pi/eau/scripts/run_eau.sh
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+[Unit]
+Description=Eau Grand Lyon scraper
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+WorkingDirectory=/home/pi/eau
+ExecStart=/home/pi/eau/scripts/run_eau.sh
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

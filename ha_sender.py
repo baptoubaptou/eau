@@ -177,12 +177,19 @@ def send_live_state(ha_url, token, sensor_name, latest_value):
             "friendly_name": "Eau Grand Lyon - Journalier",
         },
     }
-    requests.post(
-        f"{ha_url}/api/states/{sensor_name}",
-        headers=headers,
-        json=payload,
-        timeout=10,
-    )
+    try:
+        resp = requests.post(
+            f"{ha_url.rstrip('/')}/api/states/{sensor_name}",
+            headers=headers,
+            json=payload,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        print(f"[HA] Sensor live '{sensor_name}' mis à jour : {latest_value} L")
+        return True
+    except requests.RequestException as e:
+        print(f"[HA] Erreur envoi live : {e}")
+        return False
 
 
 def import_statistics_to_ha(

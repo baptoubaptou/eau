@@ -7,7 +7,6 @@ Usage :
     python main.py                  # récupère les 7 derniers jours
     python main.py --days 30        # récupère les 30 derniers jours
     python main.py --month 2026-05  # récupère un mois précis
-    python main.py --import-stats   # importe les points datés via Statistics API
     python main.py --dry-run        # affiche sans envoyer vers HA
 """
 
@@ -33,11 +32,6 @@ def main():
         type=str,
         help="Mois à récupérer au format YYYY-MM (prioritaire sur --days)",
     )
-    parser.add_argument(
-        "--import-stats",
-        action="store_true",
-        help="Importe aussi les données dans l'API Statistics (dates réelles).",
-    )
     parser.add_argument("--dry-run", action="store_true", help="Pas d'envoi vers HA")
     args = parser.parse_args()
 
@@ -46,6 +40,7 @@ def main():
     ha_url   = os.environ["HA_URL"]
     ha_token = os.environ["HA_TOKEN"]
     sensor   = os.environ.get("HA_SENSOR", "sensor.eau_grand_lyon_daily")
+    sensor_live = os.environ.get("HA_SENSOR_LIVE")
     sensor_monthly = os.environ.get("HA_SENSOR_MONTHLY", "sensor.eau_grand_lyon_monthly_current")
     statistic_id = os.environ.get("HA_STATISTIC_ID", "sensor.eau_grand_lyon_daily_import")
 
@@ -76,12 +71,17 @@ def main():
 
     if args.dry_run:
         print("\n[dry-run] Pas d'envoi vers Home Assistant.")
-        if args.import_stats:
-            import_statistics_to_ha(ha_url, ha_token, statistic_id, data)
     else:
-        latest = sorted(data, key=lambda x: x["date"], reverse=True)[0]
         send_to_ha(ha_url, ha_token, sensor, data)
-        send_live_state(ha_url, ha_token, sensor, latest["volume_liters"])
+        if sensor_live:
+            if sensor_live == sensor:
+                print(
+                    "[HA] HA_SENSOR_LIVE est identique à HA_SENSOR, "
+                    "mise à jour live ignorée pour éviter l'écrasement."
+                )
+            else:
+                latest = sorted(data, key=lambda x: x["date"], reverse=True)[0]
+                send_live_state(ha_url, ha_token, sensor_live, latest["volume_liters"])
         month_label = args.month or date.today().strftime("%Y-%m")
         month_data = data
         if not args.month:
@@ -96,8 +96,7 @@ def main():
             except ValueError:
                 month_data = data
         send_month_total_to_ha(ha_url, ha_token, sensor_monthly, month_data, month_label)
-        if args.import_stats:
-            import_statistics_to_ha(ha_url, ha_token, statistic_id, data)
+        import_statistics_to_ha(ha_url, ha_token, statistic_id, month_data)
 
     return 0
 

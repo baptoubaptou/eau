@@ -1,0 +1,20 @@
+[Unit]
+Description=Run Eau scraper every day
+
+[Timer]
+OnCalendar=*-*-* 06:10:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
+[Unit]
+Description=Run Eau scraper every day
+
+[Timer]
+OnCalendar=*-*-* 06:10:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
