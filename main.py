@@ -12,7 +12,8 @@ Usage :
 
 import argparse
 import os
-from datetime import date
+from datetime import date, timedelta
+from typing import Optional
 from dotenv import load_dotenv
 from egl_scraper import get_daily_consumption
 from ha_sender import (
@@ -96,9 +97,53 @@ def main():
             except ValueError:
                 month_data = data
         send_month_total_to_ha(ha_url, ha_token, sensor_monthly, month_data, month_label)
-        import_statistics_to_ha(ha_url, ha_token, statistic_id, month_data)
+        months_to_import = _months_to_import(args.month)
+        month_cache = {month_label: month_data}
+        for label in months_to_import:
+            dataset = month_cache.get(label)
+            if dataset is None:
+                try:
+                    dataset = get_daily_consumption(
+                        email,
+                        password,
+                        days_back=args.days,
+                        target_month=label,
+                    )
+                except ValueError:
+                    dataset = []
+                month_cache[label] = dataset
+            import_statistics_to_ha(ha_url, ha_token, statistic_id, dataset)
 
     return 0
+
+
+def _previous_month_label(today: date) -> str:
+    first_day_current = today.replace(day=1)
+    prev_month_day = first_day_current - timedelta(days=1)
+    return prev_month_day.strftime("%Y-%m")
+
+
+def _months_to_import(target_month: Optional[str]) -> list[str]:
+    """
+    Règle demandée:
+    - Si un mois est explicitement demandé: importer ce mois seulement.
+    - Sinon, jours 1-2: importer le mois précédent.
+    - Jour 3: importer le mois précédent ET le mois courant.
+    - À partir du 4: importer le mois courant.
+    """
+    if target_month:
+        return [target_month]
+
+    today = date.today()
+    current = today.strftime("%Y-%m")
+    previous = _previous_month_label(today)
+
+    if today.day <= 2:
+        return [previous]
+    if today.day == 3:
+        return [previous, current]
+    return [current]
+
 
 if __name__ == "__main__":
     exit(main())
