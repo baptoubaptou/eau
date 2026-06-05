@@ -72,96 +72,106 @@ def get_daily_consumption(
 
         # ---- 1. Page de login ----
         print("[*] Navigation vers le site...")
-        page.goto("https://agence.eaudugrandlyon.com/", wait_until="domcontentloaded", timeout=30000)
+        page.goto(
+            "https://agence.eaudugrandlyon.com/#/login",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
 
-        # Chercher les champs email / password avec des sélecteurs robustes
-        # (le markup change souvent sur ce site)
-        try:
-            if page.locator("input[type='password']").count() == 0:
-                # Sur certaines versions, il faut ouvrir la vue de login d'abord.
-                for open_login_selector in [
-                    "a:has-text('Se connecter')",
+        # Bandeau cookies éventuel.
+        for cookie_selector in [
+            "button:has-text('Accepter')",
+            "button:has-text('Tout accepter')",
+            "button:has-text('Autoriser')",
+        ]:
+            try:
+                btn = page.locator(cookie_selector).first
+                if btn.count() > 0 and btn.is_visible():
+                    btn.click(timeout=2000)
+                    break
+            except Exception:
+                pass
+
+        # Chercher les champs email / password avec des sélecteurs robustes.
+        logged_in = False
+        for attempt in range(1, 4):
+            try:
+                page.wait_for_selector(
+                    "input[type='password'], input[type='email'], input[type='text']",
+                    timeout=20000,
+                )
+
+                email_locator = page.locator(
+                    "input[type='email'], "
+                    "input[name*='email' i], input[id*='email' i], "
+                    "input[name*='ident' i], input[id*='ident' i], "
+                    "input[name*='user' i], input[id*='user' i]"
+                ).first
+
+                if email_locator.count() == 0:
+                    # Fallback si le champ n'est pas typé email.
+                    email_locator = page.locator("input[type='text']").first
+
+                pwd_locator = page.locator(
+                    "input[type='password'], input[name*='pass' i], input[id*='pass' i]"
+                ).first
+
+                email_locator.fill(email, timeout=10000)
+                pwd_locator.fill(password, timeout=10000)
+
+                clicked_submit = False
+                for submit_selector in [
+                    "button[type='submit']",
+                    "input[type='submit']",
                     "button:has-text('Se connecter')",
-                    "a:has-text('Connexion')",
                     "button:has-text('Connexion')",
-                    "a:has-text('Espace client')",
-                    "button:has-text('Espace client')",
-                    "a:has-text('Mon compte')",
-                    "button:has-text('Mon compte')",
+                    "button:has-text('Me connecter')",
+                    "button:has-text('Valider')",
                 ]:
                     try:
-                        open_btn = page.locator(open_login_selector).first
-                        if open_btn.count() > 0 and open_btn.is_visible():
-                            open_btn.click(timeout=5000)
-                            page.wait_for_timeout(1200)
-                            if page.locator("input[type='password']").count() > 0:
-                                break
+                        submit_btn = page.locator(submit_selector).first
+                        if submit_btn.count() > 0 and submit_btn.is_visible():
+                            submit_btn.click(timeout=5000)
+                            clicked_submit = True
+                            break
                     except Exception:
                         pass
 
-            page.wait_for_selector(
-                "input[type='password'], input[type='email'], input[type='text']",
-                timeout=20000,
-            )
+                if not clicked_submit:
+                    # Dernier recours : touche Entrée sur le champ mot de passe.
+                    pwd_locator.press("Enter")
 
-            # Bandeau cookies éventuel.
-            for cookie_selector in [
-                "button:has-text('Accepter')",
-                "button:has-text('Tout accepter')",
-                "button:has-text('Autoriser')",
-            ]:
+                page.wait_for_load_state("networkidle", timeout=20000)
+                page.wait_for_timeout(1200)
+                has_access_token = False
                 try:
-                    btn = page.locator(cookie_selector).first
-                    if btn.count() > 0 and btn.is_visible():
-                        btn.click(timeout=2000)
-                        break
+                    has_access_token = bool(
+                        page.evaluate("() => localStorage.getItem('access_token')")
+                    )
                 except Exception:
                     pass
 
-            email_locator = page.locator(
-                "input[type='email'], "
-                "input[name*='email' i], input[id*='email' i], "
-                "input[name*='ident' i], input[id*='ident' i], "
-                "input[name*='user' i], input[id*='user' i]"
-            ).first
+                if "#/login" not in page.url.lower() or has_access_token:
+                    logged_in = True
+                    print(
+                        f"[*] Connecté (attempt {attempt}) -> {page.url} "
+                        f"(token={has_access_token})"
+                    )
+                    break
 
-            if email_locator.count() == 0:
-                # Fallback si le champ n'est pas typé email.
-                email_locator = page.locator("input[type='text']").first
+                print(f"[!] Login non confirmé à l'issue de la tentative {attempt}.")
+            except (PWTimeout, Exception) as e:
+                print(f"[!] Échec tentative login {attempt}: {e}")
 
-            pwd_locator = page.locator(
-                "input[type='password'], input[name*='pass' i], input[id*='pass' i]"
-            ).first
+            if attempt < 3:
+                page.goto(
+                    "https://agence.eaudugrandlyon.com/#/login",
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
 
-            email_locator.fill(email, timeout=10000)
-            pwd_locator.fill(password, timeout=10000)
-
-            clicked_submit = False
-            for submit_selector in [
-                "button[type='submit']",
-                "input[type='submit']",
-                "button:has-text('Se connecter')",
-                "button:has-text('Connexion')",
-                "button:has-text('Me connecter')",
-                "button:has-text('Valider')",
-            ]:
-                try:
-                    submit_btn = page.locator(submit_selector).first
-                    if submit_btn.count() > 0 and submit_btn.is_visible():
-                        submit_btn.click(timeout=5000)
-                        clicked_submit = True
-                        break
-                except Exception:
-                    pass
-
-            if not clicked_submit:
-                # Dernier recours : touche Entrée sur le champ mot de passe.
-                pwd_locator.press("Enter")
-
-            page.wait_for_load_state("networkidle", timeout=20000)
-            print("[*] Tentative de connexion terminée.")
-        except (PWTimeout, Exception) as e:
-            print(f"[!] Échec au login : {e}")
+        if not logged_in:
+            print("[!] Échec au login après 3 tentatives.")
             browser.close()
             return []
 

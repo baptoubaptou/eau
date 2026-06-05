@@ -5,7 +5,7 @@ Crée/met à jour un sensor avec les conso d'eau.
 
 import requests
 import json
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlparse, urlunparse
 
 from websocket import create_connection
@@ -210,19 +210,11 @@ def import_statistics_to_ha(
     ws_url = _to_ws_url(ha_url)
     sorted_data = sorted(consumption_data, key=lambda x: x["date"])
 
-    cumulative = 0.0
+    first_day = datetime.strptime(sorted_data[0]["date"], "%Y-%m-%d").replace(
+        tzinfo=timezone.utc
+    )
+    base_sum = 0.0
     stats = []
-    for entry in sorted_data:
-        liters = float(entry["volume_liters"])
-        cumulative += liters
-        # Point journalier à 00:00 UTC.
-        stats.append(
-            {
-                "start": f"{entry['date']}T00:00:00+00:00",
-                "state": liters,
-                "sum": cumulative,
-            }
-        )
 
     metadata = {
         "has_mean": False,
@@ -247,6 +239,22 @@ def import_statistics_to_ha(
             print(f"[HA] Auth WebSocket échouée: {auth_resp}")
             return False
 
+        # Reprend le dernier cumul connu AVANT le début de l'import
+        # pour éviter les sauts négatifs au changement de mois.
+        base_sum = _get_sum_before_date(ws, statistic_id, first_day)
+        cumulative = base_sum
+        for entry in sorted_data:
+            liters = float(entry["volume_liters"])
+            cumulative += liters
+            # Point journalier à 00:00 UTC.
+            stats.append(
+                {
+                    "start": f"{entry['date']}T00:00:00+00:00",
+                    "state": liters,
+                    "sum": cumulative,
+                }
+            )
+
         msg_id = 1
         ws.send(
             json.dumps(
@@ -265,7 +273,8 @@ def import_statistics_to_ha(
 
         print(
             f"[HA] Statistics importées '{statistic_id}' : "
-            f"{len(stats)} point(s), de {sorted_data[0]['date']} à {sorted_data[-1]['date']}."
+            f"{len(stats)} point(s), de {sorted_data[0]['date']} à {sorted_data[-1]['date']}, "
+            f"base_sum={base_sum:.2f}."
         )
         return True
     except Exception as e:
@@ -284,3 +293,46 @@ def _to_ws_url(ha_url: str) -> str:
     ws_scheme = "wss" if parsed.scheme == "https" else "ws"
     ws_path = "/api/websocket"
     return urlunparse((ws_scheme, parsed.netloc, ws_path, "", "", ""))
+
+
+def _get_sum_before_date(ws, statistic_id: str, first_day: datetime) -> float:
+    """
+    Lit le dernier 'sum' existant avant first_day pour conserver
+    un cumul continu sur les imports successifs.
+    """
+    end_dt = first_day - timedelta(seconds=1)
+    ws.send(
+        json.dumps(
+            {
+                "id": 1001,
+                "type": "recorder/statistics_during_period",
+                "start_time": "1970-01-01T00:00:00+00:00",
+                "end_time": end_dt.isoformat(),
+                "statistic_ids": [statistic_id],
+                "period": "day",
+                "types": ["sum"],
+            }
+        )
+    )
+    resp = json.loads(ws.recv())
+    if not resp.get("success"):
+        print(f"[HA] Lecture historique Statistics impossible (base_sum=0): {resp}")
+        return 0.0
+
+    result = resp.get("result", {})
+    rows = result.get(statistic_id, [])
+    if not isinstance(rows, list) or not rows:
+        return 0.0
+
+    # On prend le dernier sum non-null.
+    for row in reversed(rows):
+        if not isinstance(row, dict):
+            continue
+        value = row.get("sum")
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return 0.0
