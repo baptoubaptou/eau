@@ -99,6 +99,9 @@ def main():
         send_month_total_to_ha(ha_url, ha_token, sensor_monthly, month_data, month_label)
         months_to_import = _months_to_import(args.month)
         month_cache = {month_label: month_data}
+        imported_labels = set()
+        current_label = date.today().strftime("%Y-%m")
+        previous_label = _previous_month_label(date.today())
         for label in months_to_import:
             dataset = month_cache.get(label)
             if dataset is None:
@@ -112,7 +115,36 @@ def main():
                 except ValueError:
                     dataset = []
                 month_cache[label] = dataset
-            import_statistics_to_ha(ha_url, ha_token, statistic_id, dataset)
+
+            # Fallback début de mois: si le mois courant n'a aucune donnée,
+            # on réimporte le mois précédent pour éviter un trou côté HA.
+            if not args.month and label == current_label and not dataset:
+                fallback_dataset = month_cache.get(previous_label)
+                if fallback_dataset is None:
+                    try:
+                        fallback_dataset = get_daily_consumption(
+                            email,
+                            password,
+                            days_back=args.days,
+                            target_month=previous_label,
+                        )
+                    except ValueError:
+                        fallback_dataset = []
+                    month_cache[previous_label] = fallback_dataset
+                if previous_label not in imported_labels:
+                    print(
+                        f"[HA] Aucune donnée sur {current_label}, "
+                        f"fallback import sur {previous_label}."
+                    )
+                    import_statistics_to_ha(
+                        ha_url, ha_token, statistic_id, fallback_dataset
+                    )
+                    imported_labels.add(previous_label)
+                continue
+
+            if label not in imported_labels:
+                import_statistics_to_ha(ha_url, ha_token, statistic_id, dataset)
+                imported_labels.add(label)
 
     return 0
 
