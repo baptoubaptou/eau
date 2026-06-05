@@ -187,8 +187,17 @@ def get_daily_consumption(
         # Appel direct de l'endpoint journalier via le token contrat.
         try:
             if contract_id_token:
-                date_debut = _to_egl_utc(datetime.combine(range_start, time.min, tzinfo=timezone.utc))
-                end_dt = datetime.combine(range_end, time(23, 59, 59), tzinfo=timezone.utc)
+                # Buffer temporel pour compenser les effets de fuseau côté EGL.
+                # Ensuite, on refiltre strictement sur [range_start, range_end].
+                start_with_buffer = range_start - timedelta(days=1)
+                end_with_buffer = range_end + timedelta(days=1)
+
+                date_debut = _to_egl_utc(
+                    datetime.combine(start_with_buffer, time.min, tzinfo=timezone.utc)
+                )
+                end_dt = datetime.combine(
+                    end_with_buffer, time(23, 59, 59), tzinfo=timezone.utc
+                )
                 now_dt = datetime.now(timezone.utc)
                 date_fin = _to_egl_utc(min(end_dt, now_dt))
                 daily_url = (
